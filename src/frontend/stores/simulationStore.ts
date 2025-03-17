@@ -98,7 +98,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   
   pauseSimulation: () => {
     if (get().simulationInterval !== null) {
-      window.clearInterval(get().simulationInterval);
+      window.clearInterval(get().simulationInterval as number);
     }
     set({ isRunning: false, simulationInterval: null });
   },

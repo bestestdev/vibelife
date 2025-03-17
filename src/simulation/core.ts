@@ -1,168 +1,141 @@
 import { Organism, Position, OrganismTraits, InitialOrganismSettings } from '../frontend/stores/simulationStore';
 
-// Define the expected types from the WebAssembly module
-interface WasmModule {
-  init_panic_hook: () => void;
-  Simulation: {
-    new (temperature: number, light: number, moisture: number): any;
-  };
-}
+// Constants for simulation
+const WORLD_SIZE = { x: 100, y: 100, z: 100 };
+const BASE_ENERGY_CONSUMPTION = 0.1;
+const MUTATION_RATE = 0.1;
+const MUTATION_STRENGTH = 0.1;
+const MAX_AGE = 100;
+const REPRODUCTION_ENERGY_COST = 10;
+const REPRODUCTION_ENERGY_THRESHOLD = 20;
 
-// Reference to the WASM module and simulation instance
-let wasmModule: WasmModule | null = null;
-let simulation: any = null;
-let isInitialized = false;
-
+// Utils
 /**
- * Ensure that the simulation has been initialized
- * @throws Error if the simulation has not been initialized
+ * Generate a random UUID for organism identification
  */
-const ensureInitialized = (): void => {
-  if (!isInitialized || !simulation) {
-    throw new Error(
-      'Simulation has not been initialized. Make sure the WebAssembly module ' +
-      'has been built (run npm run build:wasm) and initSimulation() has been called.'
-    );
-  }
-};
-
-/**
- * Initialize the simulation engine by loading the WebAssembly module
- * @throws Error if WebAssembly module cannot be loaded
- */
-export const initSimulation = async (): Promise<void> => {
-  console.log('Initializing WebAssembly simulation engine');
-  
-  if (isInitialized) {
-    console.log('Simulation already initialized');
-    return;
-  }
-  
-  try {
-    // Import the WebAssembly module using dynamic import
-    // Webpack will handle this differently in development vs. production
-    const module = await import('./rust/pkg');
-    wasmModule = module as unknown as WasmModule;
-    
-    if (!wasmModule) {
-      throw new Error('WebAssembly module failed to load');
-    }
-    
-    console.log('WebAssembly module loaded successfully');
-    wasmModule.init_panic_hook();
-    
-    // Create the simulation with default environment values
-    simulation = new wasmModule.Simulation(0.5, 0.8, 0.6);
-    console.log('Simulation engine initialized');
-    
-    isInitialized = true;
-  } catch (error) {
-    console.error('Failed to initialize WebAssembly simulation engine:', error);
-    throw new Error(
-      'Simulation engine initialization failed. Make sure you have built the ' +
-      'WebAssembly module (run npm run build:wasm) and that your browser supports WebAssembly.'
-    );
-  }
-};
-
-// Helper function to generate a unique ID
 const generateId = (): string => {
-  return 'organism-' + Math.random().toString(36).substr(2, 9);
+  return Math.random().toString(36).substring(2, 15) + 
+         Math.random().toString(36).substring(2, 15);
 };
 
-// Helper function to calculate distance between two positions
+/**
+ * Calculate Euclidean distance between two positions
+ */
 const calculateDistance = (pos1: Position, pos2: Position): number => {
-  const dx = pos1.x - pos2.x;
-  const dy = pos1.y - pos2.y;
-  const dz = pos1.z - pos2.z;
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  return Math.sqrt(
+    Math.pow(pos2.x - pos1.x, 2) + 
+    Math.pow(pos2.y - pos1.y, 2) + 
+    Math.pow(pos2.z - pos1.z, 2)
+  );
 };
 
-// Helper function to mix traits from parent to offspring with mutation
-const inheritTraits = (parentTraits: OrganismTraits, actions: string[]): OrganismTraits => {
-  // Create a base inheritance from parent
-  const traits: OrganismTraits = { ...parentTraits };
-  
-  // Apply random mutations (small changes to trait values)
-  Object.keys(traits).forEach(key => {
-    const traitKey = key as keyof OrganismTraits;
-    
-    // Base random mutation
-    const mutationAmount = (Math.random() - 0.5) * 0.1; // +/- 0.05 maximum change
-    traits[traitKey] = Math.max(0, Math.min(1, traits[traitKey] + mutationAmount));
-    
-    // Behavior-influenced mutations
-    // Increase chance of mutation in specific traits based on action history
-    if (actions.includes('moved') && traitKey === 'motility') {
-      const boost = Math.random() * 0.05; // Up to +0.05 bonus
-      traits.motility = Math.min(1, traits.motility + boost);
+/**
+ * Inherit traits from parent with possible mutations
+ */
+const inheritTraits = (parentTraits: OrganismTraits): OrganismTraits => {
+  const mutateValue = (value: number): number => {
+    if (Math.random() < MUTATION_RATE) {
+      // Apply mutation
+      const mutationAmount = (Math.random() * 2 - 1) * MUTATION_STRENGTH;
+      value += mutationAmount;
+      // Clamp values between 0 and 1
+      value = Math.max(0, Math.min(1, value));
     }
-    
-    if (actions.includes('photosynthesis') && traitKey === 'photosynthesis') {
-      const boost = Math.random() * 0.05;
-      traits.photosynthesis = Math.min(1, traits.photosynthesis + boost);
-    }
-    
-    if (actions.includes('consumed') && traitKey === 'predation') {
-      const boost = Math.random() * 0.05;
-      traits.predation = Math.min(1, traits.predation + boost);
-    }
-    
-    if (actions.includes('escaped') && traitKey === 'defense') {
-      const boost = Math.random() * 0.05;
-      traits.defense = Math.min(1, traits.defense + boost);
-    }
-    
-    if (actions.includes('detected') && traitKey === 'sensory') {
-      const boost = Math.random() * 0.05;
-      traits.sensory = Math.min(1, traits.sensory + boost);
-    }
-  });
-  
-  return traits;
+    return value;
+  };
+
+  return {
+    motility: mutateValue(parentTraits.motility),
+    photosynthesis: mutateValue(parentTraits.photosynthesis),
+    predation: mutateValue(parentTraits.predation),
+    defense: mutateValue(parentTraits.defense),
+    sensory: mutateValue(parentTraits.sensory),
+    reproduction: mutateValue(parentTraits.reproduction),
+    metabolism: mutateValue(parentTraits.metabolism),
+  };
 };
 
-// Function to process organism movement based on motility
+/**
+ * Get random position within world bounds
+ */
+const getRandomPosition = (): Position => {
+  return {
+    x: Math.random() * WORLD_SIZE.x - WORLD_SIZE.x / 2,
+    y: Math.random() * WORLD_SIZE.y - WORLD_SIZE.y / 2,
+    z: Math.random() * WORLD_SIZE.z - WORLD_SIZE.z / 2
+  };
+};
+
+/**
+ * Create a new organism with default traits
+ */
+export const createInitialOrganism = (initialSettings: InitialOrganismSettings): Organism => {
+  return {
+    id: generateId(),
+    position: getRandomPosition(),
+    size: initialSettings.size ?? 1.0,
+    traits: {
+      motility: initialSettings.motility ?? 0.1,
+      photosynthesis: initialSettings.photosynthesis ?? 0.5,
+      predation: initialSettings.predation ?? 0.1,
+      defense: initialSettings.defense ?? 0.1,
+      sensory: initialSettings.sensory ?? 0.1,
+      reproduction: initialSettings.reproduction ?? 0.3,
+      metabolism: initialSettings.metabolism ?? 0.5
+    },
+    energy: 10,
+    age: 0,
+    generation: 0,
+    actions: []
+  };
+};
+
+/**
+ * Move organism based on its motility trait
+ */
 const moveOrganism = (organism: Organism, environment: any): Organism => {
-  if (organism.traits.motility < 0.05) return organism; // Too little motility to move
+  if (organism.energy <= 0) return organism;
+
+  const motilityFactor = organism.traits.motility;
+  const movementCost = motilityFactor * 0.5;
   
-  // Calculate movement distance based on motility and size
-  // Larger organisms move slower relative to their motility
-  const moveDistance = organism.traits.motility * (1 / organism.size) * 0.5;
-  
-  // Random direction for now - could be influenced by resources, other organisms, etc.
+  if (organism.energy < movementCost) return organism;
+
+  // Random movement direction
   const angle = Math.random() * Math.PI * 2;
-  const newPosition: Position = {
-    x: organism.position.x + Math.cos(angle) * moveDistance,
-    y: organism.position.y, // Keep on the ground for now
-    z: organism.position.z + Math.sin(angle) * moveDistance,
+  const distance = motilityFactor * 2; // Max movement distance
+  
+  const newPosition = {
+    x: organism.position.x + Math.cos(angle) * distance,
+    y: organism.position.y + Math.sin(angle) * distance,
+    z: organism.position.z + (Math.random() - 0.5) * distance
   };
   
-  // Consume energy based on movement - more for larger or faster moving organisms
-  const energyCost = moveDistance * organism.size * 2;
+  // Keep within world bounds
+  newPosition.x = Math.max(-WORLD_SIZE.x/2, Math.min(WORLD_SIZE.x/2, newPosition.x));
+  newPosition.y = Math.max(-WORLD_SIZE.y/2, Math.min(WORLD_SIZE.y/2, newPosition.y));
+  newPosition.z = Math.max(-WORLD_SIZE.z/2, Math.min(WORLD_SIZE.z/2, newPosition.z));
   
   return {
     ...organism,
     position: newPosition,
-    energy: organism.energy - energyCost,
+    energy: organism.energy - movementCost,
     actions: [...organism.actions, 'moved']
   };
 };
 
-// Function to process photosynthesis based on light level and photosynthesis trait
+/**
+ * Process photosynthesis for an organism
+ */
 const processPhotosynthesis = (organism: Organism, environment: any): Organism => {
-  if (organism.traits.photosynthesis < 0.05) return organism; // Too little photosynthesis capability
+  if (organism.traits.photosynthesis <= 0) return organism;
+  
+  // Light level diminishes with depth (z axis)
+  const depthFactor = 1 - Math.abs(organism.position.z / (WORLD_SIZE.z / 2));
+  const lightAvailability = environment.lightLevel * depthFactor;
   
   // Calculate energy gained from photosynthesis
-  // Affected by:
-  // - Photosynthesis trait level
-  // - Environmental light level
-  // - Organism size (larger = more surface area)
-  const energyGain = 
-    organism.traits.photosynthesis * 
-    environment.lightLevel * 
-    organism.size * 
-    5; // Base multiplier
+  const energyGain = organism.traits.photosynthesis * lightAvailability * environment.resources.light / 100;
   
   return {
     ...organism,
@@ -171,116 +144,230 @@ const processPhotosynthesis = (organism: Organism, environment: any): Organism =
   };
 };
 
-// Process reproduction for an organism
+/**
+ * Process predation behavior for an organism
+ */
+const processPredation = (organism: Organism, organisms: Organism[]): [Organism, Organism[]] => {
+  if (organism.traits.predation <= 0 || organism.energy <= 0) {
+    return [organism, organisms];
+  }
+  
+  // Find nearby prey
+  const sensoryRange = organism.traits.sensory * 10;
+  const potentialPrey = organisms.filter(other => 
+    other.id !== organism.id && 
+    calculateDistance(organism.position, other.position) <= sensoryRange &&
+    other.size < organism.size * 1.2 // Can only prey on smaller or similar sized organisms
+  );
+  
+  if (potentialPrey.length === 0) return [organism, organisms];
+  
+  // Sort by proximity and vulnerability (inverse of defense)
+  potentialPrey.sort((a, b) => {
+    const distA = calculateDistance(organism.position, a.position);
+    const distB = calculateDistance(organism.position, b.position);
+    const vulnA = (1 - a.traits.defense) / distA;
+    const vulnB = (1 - b.traits.defense) / distB;
+    return vulnB - vulnA;
+  });
+  
+  // Attempt to prey on the most vulnerable organism
+  const prey = potentialPrey[0];
+  const preyDistance = calculateDistance(organism.position, prey.position);
+  const predationSuccess = organism.traits.predation > prey.traits.defense && 
+                          Math.random() < (organism.traits.predation - prey.traits.defense + 0.2);
+  
+  // Predation is successful
+  if (predationSuccess) {
+    // Energy gained is proportional to prey's energy and size
+    const energyGained = prey.energy * 0.7 + prey.size * 3;
+    
+    // Remove the prey from the organisms list
+    const updatedOrganisms = organisms.filter(o => o.id !== prey.id);
+    
+    return [
+      {
+        ...organism,
+        energy: organism.energy + energyGained,
+        actions: [...organism.actions, 'predation']
+      },
+      updatedOrganisms
+    ];
+  }
+  
+  // Predation attempt failed, both organisms lose some energy
+  const predatorEnergyLoss = organism.traits.predation * 0.5;
+  const preyEnergyLoss = prey.traits.defense * 0.3;
+  
+  const updatedPrey = {
+    ...prey,
+    energy: prey.energy - preyEnergyLoss,
+    actions: [...prey.actions, 'defended']
+  };
+  
+  const updatedOrganisms = organisms.map(o => 
+    o.id === prey.id ? updatedPrey : o
+  );
+  
+  return [
+    {
+      ...organism,
+      energy: organism.energy - predatorEnergyLoss,
+      actions: [...organism.actions, 'failed_predation']
+    },
+    updatedOrganisms
+  ];
+};
+
+/**
+ * Process reproduction for an organism
+ */
 const processReproduction = (organism: Organism): [Organism, Organism | null] => {
-  // Check if organism has enough energy and reproduction trait to reproduce
-  if (organism.energy < 50 || organism.traits.reproduction < 0.2) {
+  // Check if organism has enough energy to reproduce
+  if (organism.energy < REPRODUCTION_ENERGY_THRESHOLD || 
+      Math.random() > organism.traits.reproduction) {
     return [organism, null];
   }
   
-  // Chance to reproduce based on reproduction trait and energy level
-  const reproductionChance = organism.traits.reproduction * (organism.energy / 200);
-  if (Math.random() > reproductionChance) {
-    return [organism, null];
-  }
-  
-  // Create offspring
+  // Create offspring with inherited traits
   const offspring: Organism = {
     id: generateId(),
-    position: { ...organism.position },
-    size: organism.size * (0.8 + Math.random() * 0.4), // Size variation
-    traits: inheritTraits(organism.traits, organism.actions.slice(-20)), // Pass last 20 actions
-    energy: organism.energy * 0.3, // Transfer some energy to offspring
+    position: {
+      x: organism.position.x + (Math.random() - 0.5) * 2,
+      y: organism.position.y + (Math.random() - 0.5) * 2,
+      z: organism.position.z + (Math.random() - 0.5) * 2
+    },
+    size: organism.size * (0.8 + Math.random() * 0.4), // Slight variation in size
+    traits: inheritTraits(organism.traits),
+    energy: REPRODUCTION_ENERGY_COST * 0.7, // Offspring gets part of the energy invested
     age: 0,
     generation: organism.generation + 1,
     parentId: organism.id,
-    actions: []
+    actions: ['born']
   };
   
-  // Update parent after reproduction
-  const updatedParent = {
+  // Parent loses energy from reproduction
+  const updatedOrganism = {
     ...organism,
-    energy: organism.energy * 0.7, // Parent loses energy transferred to offspring
-    actions: [...organism.actions, 'reproduced']
+    energy: organism.energy - REPRODUCTION_ENERGY_COST,
+    actions: [...organism.actions, 'reproduction']
   };
   
-  return [updatedParent, offspring];
+  return [updatedOrganism, offspring];
 };
 
 /**
- * Convert a WASM organism to a TypeScript organism
+ * Apply metabolism energy cost and aging
  */
-const convertWasmOrganism = (wasmOrganism: any): Organism => {
+const processMetabolism = (organism: Organism): Organism => {
+  // Base metabolism cost plus scaling with size and traits
+  const metabolismCost = BASE_ENERGY_CONSUMPTION * 
+                        (1 + organism.traits.metabolism) * 
+                        (1 + organism.size * 0.5);
+  
+  // Increment age
+  const newAge = organism.age + 1;
+  
+  // Energy decreases with age past a certain point
+  const ageDegeneration = newAge > MAX_AGE * 0.7 ? 
+                         (newAge - MAX_AGE * 0.7) * 0.01 : 0;
+  
   return {
-    id: wasmOrganism.id,
-    position: {
-      x: wasmOrganism.position.x,
-      y: wasmOrganism.position.y,
-      z: wasmOrganism.position.z
-    },
-    size: wasmOrganism.size,
-    traits: {
-      motility: wasmOrganism.traits.motility,
-      photosynthesis: wasmOrganism.traits.photosynthesis,
-      predation: wasmOrganism.traits.predation,
-      defense: wasmOrganism.traits.defense,
-      sensory: wasmOrganism.traits.sensory,
-      reproduction: wasmOrganism.traits.reproduction,
-      metabolism: wasmOrganism.traits.metabolism
-    },
-    energy: wasmOrganism.energy,
-    age: wasmOrganism.age,
-    generation: wasmOrganism.generation,
-    parentId: wasmOrganism.parent_id,
-    actions: JSON.parse(wasmOrganism.get_actions())
+    ...organism,
+    energy: organism.energy - metabolismCost - ageDegeneration,
+    age: newAge,
+    actions: [...organism.actions, 'metabolism']
   };
 };
 
 /**
- * Create a new organism with specified traits
- * @throws Error if the simulation is not initialized
- */
-export const createInitialOrganism = (initialSettings: InitialOrganismSettings): Organism => {
-  ensureInitialized();
-  
-  const wasmOrganism = simulation.create_initial_organism(
-    initialSettings.motility || 0.1,
-    initialSettings.photosynthesis || 0.5,
-    initialSettings.size || 1.0
-  );
-  
-  return convertWasmOrganism(wasmOrganism);
-};
-
-/**
- * Process one generation of the simulation
- * @throws Error if the simulation is not initialized
+ * Simulate a generation for all organisms
  */
 export const simulateGeneration = (state: any): any => {
-  ensureInitialized();
+  let { organisms, environment } = state;
+  let newOrganisms: Organism[] = [];
   
-  const wasmOrganisms = simulation.simulate_generation();
-  const organisms = Array.from(wasmOrganisms).map(convertWasmOrganism);
+  // Process each organism
+  for (const organism of organisms) {
+    // Clear previous actions
+    let updatedOrganism: Organism = { ...organism, actions: [] };
+    
+    // Skip dead organisms
+    if (updatedOrganism.energy <= 0 || updatedOrganism.age >= MAX_AGE) {
+      continue;
+    }
+    
+    // Apply metabolism and aging
+    updatedOrganism = processMetabolism(updatedOrganism);
+    
+    // Skip if organism died from metabolism
+    if (updatedOrganism.energy <= 0) {
+      continue;
+    }
+    
+    // Process movement
+    updatedOrganism = moveOrganism(updatedOrganism, environment);
+    
+    // Process photosynthesis
+    updatedOrganism = processPhotosynthesis(updatedOrganism, environment);
+    
+    // Process predation
+    let remainingOrganisms = [...newOrganisms];
+    [updatedOrganism, remainingOrganisms] = processPredation(updatedOrganism, remainingOrganisms);
+    newOrganisms = remainingOrganisms;
+    
+    // Process reproduction
+    let offspring: Organism | null = null;
+    [updatedOrganism, offspring] = processReproduction(updatedOrganism);
+    
+    // Add the updated organism to the new list
+    newOrganisms.push(updatedOrganism);
+    
+    // Add offspring if reproduction occurred
+    if (offspring) {
+      newOrganisms.push(offspring);
+    }
+  }
   
+  // Update environment - simple model with some resource regeneration
+  const updatedEnvironment = {
+    ...environment,
+    resources: {
+      organic: Math.min(100, environment.resources.organic + 0.5),
+      minerals: Math.min(100, environment.resources.minerals + 0.2),
+      light: 100 // Light is constant
+    }
+  };
+  
+  // Return updated state
   return {
     ...state,
-    organisms
+    organisms: newOrganisms,
+    environment: updatedEnvironment
   };
 };
 
 /**
- * Fast forward the simulation by multiple generations
- * @throws Error if the simulation is not initialized
+ * Fast forward simulation by multiple generations
  */
 export const fastForward = (state: any, generations: number): any => {
-  ensureInitialized();
+  let currentState = { ...state };
   
-  const wasmOrganisms = simulation.fast_forward(generations);
-  const organisms = Array.from(wasmOrganisms).map(convertWasmOrganism);
+  for (let i = 0; i < generations; i++) {
+    currentState = simulateGeneration(currentState);
+  }
   
   return {
-    ...state,
-    organisms,
+    ...currentState,
     currentGeneration: state.currentGeneration + generations
   };
+};
+
+/**
+ * Initialize the simulation
+ */
+export const initSimulation = async (): Promise<void> => {
+  console.log('Initializing TypeScript simulation engine');
+  // Nothing to initialize for the TypeScript version
+  return Promise.resolve();
 }; 

@@ -108,49 +108,38 @@ The world of VibeLife features diverse environmental factors that influence evol
 - **Ecosystem Design**: Create custom environments with specific conditions
 - **Time Controls**: Speed up, slow down, or pause the simulation to observe at different timescales
 
-## Technical Vision
-VibeLife aims to create a scientifically grounded yet fun and accessible simulation of evolutionary processes. The game will balance:
-
-- Biological accuracy with engaging gameplay
-- Complex systems with intuitive interfaces
-- Emergent behaviors with player agency
-
 ## Technical Architecture
 
 ### Frontend (Game Interface)
-- **Three.js/PixiJS**: JavaScript-based rendering libraries for creating interactive 2D/3D graphics in the browser
+- **Three.js**: JavaScript-based rendering library for creating interactive 3D graphics in the browser
 - **React**: Component-based UI framework for building the game interface and controls
 - **TypeScript**: Strongly-typed JavaScript for more maintainable code and better developer experience
 - **WebGL**: Hardware-accelerated graphics rendering in the browser
-- **Custom Shaders**: GLSL shaders for efficient rendering of large numbers of organisms and environmental effects
+- **Zustand**: State management for maintaining simulation state
 - **Responsive Design**: Adaptive interface that works across desktop and tablet devices
 
-### Backend (Simulation Engine)
-- **Rust**: Core simulation engine written in Rust for maximum performance, memory safety, and concurrency support
-- **WASM Integration**: Rust compiled to WebAssembly for browser-based deployment while maintaining near-native performance
-- **Parallel Computation**: Multi-threaded processing for organism updates and environmental calculations
-- **GPU Acceleration**: WebGPU/WebGL Compute for massively parallel computation where supported
-- **Action Compression**: Behavioral patterns compressed into weighted trait influence factors rather than storing individual actions
+### Simulation Engine
+- **TypeScript**: The entire simulation engine is written in TypeScript for easy integration with the frontend
+- **Object-Oriented Design**: Clear separation of organisms, traits, and simulation logic
+- **Functional Programming**: Immutable data structures for predictable state management
+- **Event-Driven Architecture**: Organisms respond to environmental changes and interactions
 
 ### Data Architecture
-- **ECS (Entity Component System)**: Efficient data organization pattern for managing large numbers of organisms with varying traits
-- **Sparse Data Structures**: Optimized storage of organism traits to minimize memory footprint
-- **Spatial Partitioning**: Grid or quadtree-based systems to efficiently process interactions between nearby organisms
-- **Serialization**: Efficient binary format for saving/loading simulation states
+- **Object-Based**: Efficient implementation of organisms and their traits
+- **Spatial Awareness**: Organisms are aware of their surroundings and other nearby entities
+- **Trait Inheritance**: Genetic algorithm inspired inheritance with mutations
+- **Serialization**: JSON-based format for saving/loading simulation states
 
 ### Optimization Strategies
-- **Level of Detail**: Simplified calculations for organisms far from player focus
-- **Instancing**: GPU instancing for rendering large numbers of similar organisms
-- **Batched Updates**: Processing organisms in batches to maximize cache efficiency
-- **Adaptive Simulation Rate**: Dynamically adjusting update frequency based on computational load
-- **Trait Inheritance Optimization**: Genetic algorithms optimized for performance while maintaining biological plausibility
+- **Batched Updates**: Processing organisms in generations to maximize efficiency
+- **Simple Physics**: Lightweight collision detection and movement systems
+- **Adaptive Simulation Rate**: Dynamic time scaling for smooth visualization
 
 ### Deployment Model
 - **Progressive Web App**: Primary deployment as a browser-based application
-- **Optional Desktop Client**: Native application for maximum performance on high-end systems
-- **Cloud Save Integration**: Lightweight server component for sharing and storing simulations
+- **Local Storage**: Save simulations to browser storage
 
-This architecture prioritizes performance while maintaining visual quality and accessibility, allowing VibeLife to handle complex simulations with thousands of organisms on consumer hardware.
+This architecture prioritizes simplicity, maintainability, and performance, allowing VibeLife to handle complex simulations with hundreds of organisms in the browser.
 
 ## Development Roadmap
 1. Core simulation engine with basic trait inheritance
@@ -162,11 +151,9 @@ This architecture prioritizes performance while maintaining visual quality and a
 
 ## Development Setup
 
-### Prerequisites (Required)
+### Prerequisites
 - Node.js (v14+)
 - npm or yarn
-- Rust and Cargo (simulation engine requires Rust)
-- wasm-pack (required for WebAssembly compilation)
 
 ### Installation
 ```bash
@@ -179,11 +166,6 @@ npm install
 # or
 yarn install
 
-# Build Rust WebAssembly module (Required)
-cd src/simulation/rust
-wasm-pack build --target web --out-dir pkg
-cd ../../..
-
 # Configure environment (optional)
 cp .env.example .env
 # Edit .env file to change PORT or other settings
@@ -191,26 +173,16 @@ cp .env.example .env
 
 ### Development
 ```bash
-# One-command development setup (builds WebAssembly module and starts dev server)
-yarn dev
-# or
+# Start the development server
 npm run dev
-
-# Or start just the development server (if WebAssembly module is already built)
-yarn start
 # or
-npm start
+yarn dev
 ```
 
-The application will be available at `http://localhost:PORT`, where PORT is the port specified in your `.env` file (defaults to 3000 if not specified).
+The application will be available at `http://localhost:3031`.
 
 ### Building for Production
 ```bash
-# Build the Rust WebAssembly module (Required)
-cd src/simulation/rust
-wasm-pack build --target web --out-dir pkg --release
-cd ../../..
-
 # Build the application
 npm run build
 # or
@@ -219,23 +191,18 @@ yarn build
 
 The compiled files will be in the `dist` directory.
 
-### Installing Rust and WebAssembly Tools (Required)
-If you don't have Rust installed:
-
+### Running Tests
 ```bash
-# Install Rust and Cargo
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source $HOME/.cargo/env
-
-# Install wasm-pack
-cargo install wasm-pack
+# Run the test suite
+npm test
+# or
+yarn test
 ```
 
 ### Project Structure
 - `src/frontend`: React components and UI code
 - `src/simulation`: Core simulation engine
-  - `src/simulation/core.ts`: TypeScript interface to simulation engine
-  - `src/simulation/rust`: Rust implementation of high-performance simulation logic
+  - `src/simulation/core.ts`: TypeScript implementation of simulation logic
 - `src/frontend/stores`: State management with Zustand
 
 ---
