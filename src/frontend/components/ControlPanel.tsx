@@ -27,10 +27,12 @@ const ControlPanel: React.FC = () => {
   const [initialOrganismSettings, setInitialOrganismSettings] = useState({
     motility: 0.1,
     photosynthesis: 0.5,
+    reproduction: 0.5,
     size: 1.0
   });
   
   const [fastForwardGenerations, setFastForwardGenerations] = useState(100);
+  const [initialPopulationCount, setInitialPopulationCount] = useState(5);
   
   const handleSettingChange = (setting: string, value: number) => {
     setInitialOrganismSettings(prev => ({
@@ -40,7 +42,7 @@ const ControlPanel: React.FC = () => {
   };
   
   const handleNewSimulation = () => {
-    startNewSimulation(initialOrganismSettings);
+    startNewSimulation(initialOrganismSettings, initialPopulationCount);
   };
   
   return (
@@ -99,6 +101,21 @@ const ControlPanel: React.FC = () => {
         <h3>New Simulation</h3>
         <div className="slider-control">
           <label>
+            Initial Population Count:
+            <input 
+              type="range" 
+              min="1" 
+              max="20" 
+              step="1"
+              value={initialPopulationCount}
+              onChange={e => setInitialPopulationCount(Number(e.target.value))}
+            />
+            <span>{initialPopulationCount}</span>
+          </label>
+        </div>
+        
+        <div className="slider-control">
+          <label>
             Initial Motility:
             <input 
               type="range" 
@@ -124,6 +141,21 @@ const ControlPanel: React.FC = () => {
               onChange={e => handleSettingChange('photosynthesis', Number(e.target.value))}
             />
             <span>{initialOrganismSettings.photosynthesis}</span>
+          </label>
+        </div>
+        
+        <div className="slider-control">
+          <label>
+            Initial Reproduction:
+            <input 
+              type="range" 
+              min="0" 
+              max="1" 
+              step="0.05"
+              value={initialOrganismSettings.reproduction}
+              onChange={e => handleSettingChange('reproduction', Number(e.target.value))}
+            />
+            <span>{initialOrganismSettings.reproduction}</span>
           </label>
         </div>
         

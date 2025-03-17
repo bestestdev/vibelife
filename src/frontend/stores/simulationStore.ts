@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { simulateGeneration, fastForward, createInitialOrganism } from '../../simulation/core';
+import { simulateGeneration, fastForward, createInitialOrganism, createInitialPopulation } from '../../simulation/core';
 
 export interface Position {
   x: number;
@@ -20,6 +20,8 @@ export interface OrganismTraits {
 export interface Organism {
   id: string;
   position: Position;
+  previousPosition: Position; // For interpolation: where the organism was before the current position
+  targetPosition: Position;   // For interpolation: where the organism is moving to
   size: number;
   traits: OrganismTraits;
   energy: number;
@@ -27,6 +29,7 @@ export interface Organism {
   generation: number;
   parentId?: string;
   actions: string[];
+  isPlayerControlled?: boolean; // Flag to indicate if this organism is being controlled by the player
 }
 
 export interface InitialOrganismSettings {
@@ -56,13 +59,19 @@ interface SimulationState {
     }
   };
   simulationInterval: number | null;
+  playerControlledOrganism: string | null; // ID of the organism being controlled
   
   // Actions
   startSimulation: () => void;
   pauseSimulation: () => void;
   setSimulationSpeed: (speed: number) => void;
   fastForward: (generations: number) => void;
-  startNewSimulation: (initialTraits: InitialOrganismSettings) => void;
+  startNewSimulation: (initialTraits: InitialOrganismSettings, initialPopulationCount?: number) => void;
+  
+  // Player control actions
+  takeControlOfOrganism: (organismId: string) => void;
+  releaseControlOfOrganism: () => void;
+  movePlayerOrganism: (direction: { x: number, y: number, z: number }) => void;
 }
 
 export const useSimulationStore = create<SimulationState>((set, get) => ({
@@ -70,6 +79,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   isRunning: false,
   simulationSpeed: 1,
   currentGeneration: 0,
+  playerControlledOrganism: null,
   environment: {
     temperature: 0.5, // Normalized value 0-1
     lightLevel: 0.8,
@@ -128,16 +138,95 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     }
   },
   
-  startNewSimulation: (initialTraits) => {
+  startNewSimulation: (initialTraits, initialPopulationCount = 5) => {
     // Stop any running simulation
     get().pauseSimulation();
     
-    // Create initial organism using the new function
-    const initialOrganism = createInitialOrganism(initialTraits);
+    // Create initial population of organisms
+    const initialPopulation = createInitialPopulation(initialTraits, initialPopulationCount);
     
     set({
-      organisms: [initialOrganism],
+      organisms: initialPopulation,
       currentGeneration: 0
+    });
+  },
+  
+  // Player control methods
+  takeControlOfOrganism: (organismId: string) => {
+    set(state => {
+      const organisms = state.organisms.map(org => {
+        if (org.id === organismId) {
+          return { ...org, isPlayerControlled: true };
+        } else if (org.isPlayerControlled) {
+          // Remove control from any other organism
+          return { ...org, isPlayerControlled: false };
+        }
+        return org;
+      });
+      
+      return {
+        ...state,
+        organisms,
+        playerControlledOrganism: organismId
+      };
+    });
+  },
+  
+  releaseControlOfOrganism: () => {
+    set(state => {
+      const organisms = state.organisms.map(org => {
+        if (org.isPlayerControlled) {
+          return { ...org, isPlayerControlled: false };
+        }
+        return org;
+      });
+      
+      return {
+        ...state,
+        organisms,
+        playerControlledOrganism: null
+      };
+    });
+  },
+  
+  movePlayerOrganism: (direction: { x: number, y: number, z: number }) => {
+    set(state => {
+      const { playerControlledOrganism } = state;
+      if (!playerControlledOrganism) return state;
+      
+      const organisms = state.organisms.map(org => {
+        if (org.id === playerControlledOrganism) {
+          // Calculate new position
+          const movementSpeed = org.traits.motility * 3; // Use motility for movement speed
+          const newPosition = {
+            x: org.position.x + direction.x * movementSpeed,
+            y: org.position.y + direction.y * movementSpeed,
+            z: org.position.z + direction.z * movementSpeed
+          };
+          
+          // Keep within world bounds (assuming WORLD_SIZE from core.ts)
+          const WORLD_SIZE = { x: 100, y: 100, z: 100 };
+          newPosition.x = Math.max(-WORLD_SIZE.x/2, Math.min(WORLD_SIZE.x/2, newPosition.x));
+          newPosition.y = Math.max(-WORLD_SIZE.y/2, Math.min(WORLD_SIZE.y/2, newPosition.y));
+          newPosition.z = Math.max(-WORLD_SIZE.z/2, Math.min(WORLD_SIZE.z/2, newPosition.z));
+          
+          // Update organism with new position and energy cost
+          return {
+            ...org,
+            previousPosition: org.position,
+            position: newPosition,
+            targetPosition: newPosition,
+            energy: org.energy - (org.traits.motility * 0.3), // Small energy cost for movement
+            actions: [...org.actions, 'player_moved']
+          };
+        }
+        return org;
+      });
+      
+      return {
+        ...state,
+        organisms
+      };
     });
   }
 })); 

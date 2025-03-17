@@ -70,9 +70,12 @@ const getRandomPosition = (): Position => {
  * Create a new organism with default traits
  */
 export const createInitialOrganism = (initialSettings: InitialOrganismSettings): Organism => {
+  const position = getRandomPosition();
   return {
     id: generateId(),
-    position: getRandomPosition(),
+    position: position,
+    previousPosition: position, // Initialize previous position to be the same as current
+    targetPosition: position,   // Initialize target position to be the same as current
     size: initialSettings.size ?? 1.0,
     traits: {
       motility: initialSettings.motility ?? 0.1,
@@ -83,11 +86,38 @@ export const createInitialOrganism = (initialSettings: InitialOrganismSettings):
       reproduction: initialSettings.reproduction ?? 0.3,
       metabolism: initialSettings.metabolism ?? 0.5
     },
-    energy: 10,
+    energy: 25, // Start with enough energy to reproduce
     age: 0,
     generation: 0,
     actions: []
   };
+};
+
+/**
+ * Create multiple initial organisms with the same traits but different positions
+ */
+export const createInitialPopulation = (initialSettings: InitialOrganismSettings, count: number): Organism[] => {
+  const organisms: Organism[] = [];
+  
+  // Generate a central position for the colony
+  const centerPosition = getRandomPosition();
+  
+  // Create organisms around that central point
+  for (let i = 0; i < count; i++) {
+    // Create the organism with default position first
+    const organism = createInitialOrganism(initialSettings);
+    
+    // Then override its position to be near the center point (within a 10 unit radius)
+    organism.position = {
+      x: centerPosition.x + (Math.random() - 0.5) * 10,
+      y: centerPosition.y + (Math.random() - 0.5) * 10, 
+      z: centerPosition.z + (Math.random() - 0.5) * 10
+    };
+    
+    organisms.push(organism);
+  }
+  
+  return organisms;
 };
 
 /**
@@ -118,7 +148,9 @@ const moveOrganism = (organism: Organism, environment: any): Organism => {
   
   return {
     ...organism,
-    position: newPosition,
+    previousPosition: organism.position, // Store the current position as previous
+    position: organism.position,         // Keep current position unchanged
+    targetPosition: newPosition,         // Set target position for interpolation
     energy: organism.energy - movementCost,
     actions: [...organism.actions, 'moved']
   };
@@ -229,14 +261,19 @@ const processReproduction = (organism: Organism): [Organism, Organism | null] =>
     return [organism, null];
   }
   
+  // Create position for offspring near parent
+  const offspringPosition = {
+    x: organism.position.x + (Math.random() - 0.5) * 2,
+    y: organism.position.y + (Math.random() - 0.5) * 2,
+    z: organism.position.z + (Math.random() - 0.5) * 2
+  };
+  
   // Create offspring with inherited traits
   const offspring: Organism = {
     id: generateId(),
-    position: {
-      x: organism.position.x + (Math.random() - 0.5) * 2,
-      y: organism.position.y + (Math.random() - 0.5) * 2,
-      z: organism.position.z + (Math.random() - 0.5) * 2
-    },
+    position: offspringPosition,
+    previousPosition: offspringPosition, // Initialize previous position
+    targetPosition: offspringPosition,   // Initialize target position
     size: organism.size * (0.8 + Math.random() * 0.4), // Slight variation in size
     traits: inheritTraits(organism.traits),
     energy: REPRODUCTION_ENERGY_COST * 0.7, // Offspring gets part of the energy invested
@@ -289,12 +326,19 @@ export const simulateGeneration = (state: any): any => {
   
   // Process each organism
   for (const organism of organisms) {
+    // Skip dead organisms
+    if (organism.energy <= 0 || organism.age >= MAX_AGE) {
+      continue;
+    }
+    
     // Clear previous actions
     let updatedOrganism: Organism = { ...organism, actions: [] };
     
-    // Skip dead organisms
-    if (updatedOrganism.energy <= 0 || updatedOrganism.age >= MAX_AGE) {
-      continue;
+    // Update position from target
+    if (!updatedOrganism.isPlayerControlled) {
+      // For non-player controlled organisms, move the position to the target
+      updatedOrganism.previousPosition = { ...updatedOrganism.position };
+      updatedOrganism.position = { ...updatedOrganism.targetPosition };
     }
     
     // Apply metabolism and aging
@@ -305,8 +349,10 @@ export const simulateGeneration = (state: any): any => {
       continue;
     }
     
-    // Process movement
-    updatedOrganism = moveOrganism(updatedOrganism, environment);
+    // Process movement only for non-player controlled organisms
+    if (!updatedOrganism.isPlayerControlled) {
+      updatedOrganism = moveOrganism(updatedOrganism, environment);
+    }
     
     // Process photosynthesis
     updatedOrganism = processPhotosynthesis(updatedOrganism, environment);
