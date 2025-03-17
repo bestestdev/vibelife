@@ -160,6 +160,84 @@ This architecture prioritizes performance while maintaining visual quality and a
 5. Ecosystem analytics and visualization tools
 6. Scenario challenges and gameplay objectives
 
+## Development Setup
+
+### Prerequisites (Required)
+- Node.js (v14+)
+- npm or yarn
+- Rust and Cargo (simulation engine requires Rust)
+- wasm-pack (required for WebAssembly compilation)
+
+### Installation
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/vibelife.git
+cd vibelife
+
+# Install JavaScript dependencies
+npm install
+# or
+yarn install
+
+# Build Rust WebAssembly module (Required)
+cd src/simulation/rust
+wasm-pack build --target web --out-dir pkg
+cd ../../..
+
+# Configure environment (optional)
+cp .env.example .env
+# Edit .env file to change PORT or other settings
+```
+
+### Development
+```bash
+# One-command development setup (builds WebAssembly module and starts dev server)
+yarn dev
+# or
+npm run dev
+
+# Or start just the development server (if WebAssembly module is already built)
+yarn start
+# or
+npm start
+```
+
+The application will be available at `http://localhost:PORT`, where PORT is the port specified in your `.env` file (defaults to 3000 if not specified).
+
+### Building for Production
+```bash
+# Build the Rust WebAssembly module (Required)
+cd src/simulation/rust
+wasm-pack build --target web --out-dir pkg --release
+cd ../../..
+
+# Build the application
+npm run build
+# or
+yarn build
+```
+
+The compiled files will be in the `dist` directory.
+
+### Installing Rust and WebAssembly Tools (Required)
+If you don't have Rust installed:
+
+```bash
+# Install Rust and Cargo
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+
+# Install wasm-pack
+cargo install wasm-pack
+```
+
+### Project Structure
+- `src/frontend`: React components and UI code
+- `src/simulation`: Core simulation engine
+  - `src/simulation/core.ts`: TypeScript interface to simulation engine
+  - `src/simulation/rust`: Rust implementation of high-performance simulation logic
+- `src/frontend/stores`: State management with Zustand
+
 ---
 
 Join us in exploring the fascinating world of evolution through gameplay in VibeLife, where every action can shape the future of life itself!

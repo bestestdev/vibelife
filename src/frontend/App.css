@@ -1,0 +1,69 @@
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* Loading and error states */
+.loading-container,
+.initialization-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: #0a0a14;
+  color: #ffffff;
+  text-align: center;
+  padding: 2rem;
+}
+
+.initialization-error {
+  background-color: #140a0a;
+}
+
+.initialization-error pre {
+  background-color: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 4px;
+  font-family: monospace;
+  margin: 1rem 0;
+}
+
+/* Simulation view will take most of the space */
+.simulation-container {
+  flex: 1;
+  position: relative;
+}
+
+.canvas-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Control panel at the bottom or side */
+.control-panel {
+  background-color: rgba(10, 10, 20, 0.8);
+  padding: 10px;
+  border-top: 1px solid #333;
+}
+
+@media (min-width: 768px) {
+  .app-container {
+    flex-direction: row;
+  }
+  
+  .control-panel {
+    width: 300px;
+    border-top: none;
+    border-left: 1px solid #333;
+    height: 100%;
+    overflow-y: auto;
+  }
+} 
